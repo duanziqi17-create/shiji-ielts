@@ -63,7 +63,11 @@ window.Learning=(()=>{
     ['whereas','conj. 然而；而','City rents rose, whereas rural rents stayed stable.','城市租金上涨，而乡村租金保持稳定。']
   ];
   const base=()=>window.LESSONS.flatMap((lesson,day)=>lesson.words.map((w,index)=>({id:`base-${day}-${index}`,word:w[0],phonetic:w[1],meaning:w[2],example:w[3],translation:w[4]})));
-  const words=()=>[...base(),...extra.map((w,i)=>({id:`ielts-${i}`,word:w[0],phonetic:'',meaning:w[1],example:w[2],translation:w[3]}))];
+  const starter=()=>[...base(),...extra.map((w,i)=>({id:`ielts-${i}`,word:w[0],phonetic:'',meaning:w[1],example:w[2],translation:w[3]}))];
+  const labels={starter:'原创起步词',cet4:'大学四级',cet6:'大学六级',kaoyan:'考研英语',ielts:'雅思 IELTS',toefl:'托福 TOEFL',gre:'GRE',sat:'SAT'};
+  const cache={};
+  const words=(book='starter')=>cache[book]||(cache[book]=book==='starter'?starter():(()=>{const curated=new Map(words('starter').map(w=>[w.word.toLowerCase(),w]));return(window.VOCAB_BOOKS?.[book]||[]).map((w,i)=>{const good=curated.get(w[0].toLowerCase());return{id:`${book}-${i}`,word:w[0],phonetic:w[1]||good?.phonetic||'',meaning:good?.meaning||w[2],example:good?.example||'',translation:good?.translation||''};});})());
+  const books=()=>Object.entries(labels).map(([id,label])=>({id,label,count:words(id).length}));
   const date=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
   function ensure(s){
     s.newWordTarget=Math.max(5,Math.min(60,Number(s.newWordTarget)||20));
@@ -71,14 +75,21 @@ window.Learning=(()=>{
     s.dailyLearning=s.dailyLearning&&typeof s.dailyLearning==='object'?s.dailyLearning:{};
     s.learningCursor=s.learningCursor&&typeof s.learningCursor==='object'?s.learningCursor:{words:0,sentences:0};
     s.learningCursor.words=Number(s.learningCursor.words)||0;s.learningCursor.sentences=Number(s.learningCursor.sentences)||0;
+    if(!s.selectedBook)s.selectedBook=s.learningCursor.words>0?'starter':'cet4';
+    if(!labels[s.selectedBook]||!words(s.selectedBook).length)s.selectedBook='starter';
+    s.bookCursors=s.bookCursors&&typeof s.bookCursors==='object'?s.bookCursors:{};
+    if(s.selectedBook==='starter'&&!Number.isFinite(Number(s.bookCursors.starter)))s.bookCursors.starter=s.learningCursor.words;
+    for(const id of Object.keys(labels))s.bookCursors[id]=Math.max(0,Number(s.bookCursors[id])||0);
     const d=date();s.dailyLearning[d]=s.dailyLearning[d]||{words:[],sentences:[]};
     s.dailyLearning[d].words=Array.isArray(s.dailyLearning[d].words)?s.dailyLearning[d].words:[];
     s.dailyLearning[d].sentences=Array.isArray(s.dailyLearning[d].sentences)?s.dailyLearning[d].sentences:[];
     return s;
   }
   function progress(s,d=date()){ensure(s);const x=s.dailyLearning[d]||{words:[],sentences:[]};return{words:x.words.length,sentences:x.sentences.length,wordTarget:s.newWordTarget,sentenceTarget:s.sentenceTarget};}
-  function currentWord(s,kind='words'){ensure(s);const pool=words(),cursor=s.learningCursor[kind]||0;return pool[cursor%pool.length];}
-  function complete(s,kind){ensure(s);const item=currentWord(s,kind),record=s.dailyLearning[date()][kind];record.push(`${item.id}-${s.learningCursor[kind]}`);s.learningCursor[kind]++;return item;}
+  function currentWord(s,kind='words'){ensure(s);if(kind==='sentences'){const pool=words();return pool[s.learningCursor.sentences%pool.length];}const pool=words(s.selectedBook),cursor=s.bookCursors[s.selectedBook];return cursor>=pool.length?null:pool[cursor];}
+  function complete(s,kind){ensure(s);const item=currentWord(s,kind);if(!item)return null;const book=kind==='words'?s.selectedBook:'starter';s.dailyLearning[date()][kind].push({id:item.id,word:item.word,book});if(kind==='words'){s.bookCursors[book]++;s.learningCursor.words++;}else s.learningCursor.sentences++;return item;}
   function dailyCounts(s,d){const x=s.dailyLearning?.[d]||{};return{words:(x.words||[]).length,sentences:(x.sentences||[]).length};}
-  return{ensure,progress,currentWord,complete,dailyCounts,date,words};
+  function learnedWords(s){const result=new Set(),legacy=new Map(words().map(w=>[w.id,w.word.toLowerCase()]));for(const day of Object.values(s.dailyLearning||{}))for(const entry of day.words||[]){if(entry&&typeof entry==='object'&&entry.word)result.add(entry.word.toLowerCase());else if(typeof entry==='string'){const id=entry.replace(/-\d+$/,'');if(legacy.has(id))result.add(legacy.get(id));}}return result;}
+  function bookPosition(s){ensure(s);return{learned:s.bookCursors[s.selectedBook],total:words(s.selectedBook).length};}
+  return{ensure,progress,currentWord,complete,dailyCounts,date,words,books,bookPosition,learnedWords,labels};
 })();
